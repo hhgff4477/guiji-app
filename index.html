@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="鬼邮局" />
+<meta name="theme-color" content="#F5F6F8" />
+<meta name="apple-mobile-web-app-title" content="鬼邮局" />
+<meta name="format-detection" content="telephone=no" />
+<title>鬼邮局</title>
+<meta name="build" content="__BUILD__" />
+<link rel="manifest" href="/api/manifest?sharecode=GT7GTQCHUK" />
+
+<!-- 换版本时清掉旧 Service Worker，防止「新页面配旧脚本」把自己锁死 -->
+<script>
+(function () {
+  try {
+    var meta = document.querySelector('meta[name="build"]');
+    var b = meta ? meta.getAttribute('content') : '';
+    if (!b || b === '__BUILD__') return;
+    var seen = localStorage.getItem('guiji_build');
+    if (seen === b) return;
+    localStorage.setItem('guiji_build', b);
+
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.getRegistrations().then(function (rs) {
+        return Promise.all(rs.map(function (r) { return r.unregister(); }));
+      }).then(function () {
+        location.reload();
+      }).catch(function () {});
+    }
+  } catch (e) {}
+})();
+</script>
+<link rel="apple-touch-icon" href="/assets/icon-180.png?sharecode=GT7GTQCHUK" />
+<link rel="stylesheet" href="assets/style.css" />
+</head>
+<body>
+
+<div id="app">
+
+  <!-- 首页 -->
+  <section class="screen" id="s-home">
+    <div class="pad">
+      <div class="hero">
+        <div class="hero-top">
+          <div>
+            <div class="brand">鬼邮局</div>
+            <div class="brand-sub" id="today-label">—</div>
+          </div>
+          <div class="sign-row" id="sign-row"></div>
+        </div>
+      </div>
+
+      <!-- 早晨提醒：每天早上置顶，点「收起」当天不再出现 -->
+      <div class="morning" id="morning-card" hidden>
+        <div class="morning-head">
+          <div class="morning-title" id="morning-title">早上好</div>
+          <div class="morning-x" data-act="morning-dismiss">收起</div>
+        </div>
+        <div class="morning-lines" id="morning-lines"></div>
+        <div class="morning-foot">
+          <span class="morning-when" id="morning-when"></span>
+          <span class="morning-go" data-go="todos">看时间表 ›</span>
+        </div>
+      </div>
+
+      <!-- 有新版本时冒出来 -->
+      <div class="upd-bar" id="update-bar" hidden>
+        <div class="ub-main" data-act="update-open">
+          <span class="ub-ic">↑</span>
+          <span class="ub-text" id="update-text">有新版本</span>
+        </div>
+        <span class="ub-x" data-act="update-dismiss">×</span>
+      </div>
+
+      <!-- 装到桌面 -->
+      <div class="inst-bar" id="install-bar" hidden>
+        <div class="ib-main" data-go="install">
+          <span class="ib-ic">↓</span>
+          <span class="ib-text" id="ib-text">装到桌面，像个 APP</span>
+        </div>
+        <span class="ib-x" data-act="install-dismiss">×</span>
+      </div>
+
+      <!-- 剪贴板里有链接时冒出来，一点就读 -->
+      <div class="clip-bar" id="clip-bar" hidden>
+        <div class="clip-main" id="clip-go">
+          <span class="clip-ic">链</span>
+          <span class="clip-text" id="clip-text">剪贴板里有个链接</span>
+        </div>
+        <span class="clip-x" data-act="clip-dismiss">×</span>
+      </div>
+
+      <div class="notice" id="cloud-notice" hidden></div>
+
+      <div class="stats-row">
+        <div class="stat-box"><div class="stat-num" id="st-new">0</div><div class="stat-lab">今日新增</div></div>
+        <div class="stat-box"><div class="stat-num" id="st-todo">0</div><div class="stat-lab">待办</div></div>
+        <div class="stat-box"><div class="stat-num" id="st-due">0</div><div class="stat-lab">7 天内到期</div></div>
+      </div>
+
+      <div class="sec" id="today-sec" hidden>
+        <div class="sec-head"><span class="sec-title">今天</span><span class="sec-more" data-go="todos">全部</span></div>
+        <div class="card" id="today-list"></div>
+      </div>
+
+      <div class="sec">
+        <div class="sec-head"><span class="sec-title">最近收到</span><span class="sec-more" data-go="library">全部</span></div>
+        <div class="card" id="recent-list"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 报告 -->
+  <section class="screen" id="s-reports" hidden>
+    <div class="pad">
+      <div class="hero"><div class="brand">报告</div><div class="brand-sub">把一天里处理过的事，汇成一页</div></div>
+      <div class="btn btn-primary" id="gen-report" style="margin:20px 0 22px">生成今天的报告</div>
+      <div id="report-list"></div>
+    </div>
+  </section>
+
+  <!-- 我的 -->
+  <section class="screen" id="s-me" hidden>
+    <div class="pad">
+      <div class="hero"><div class="brand">我的</div><div class="brand-sub">数据存在这台手机上</div></div>
+      <div class="card card-pad">
+        <div class="me-row"><span class="me-label">AI 分析</span><span class="me-value" id="ai-state">检测中…</span></div>
+        <div class="me-row"><span class="me-label">已处理内容</span><span class="me-value" id="me-items">0 条</span></div>
+        <div class="me-row" id="ver-row"><span class="me-label">网页版本</span><span class="me-value" id="me-ver">—</span></div>
+        <div class="me-row" id="upd-row"><span class="me-label">APP 版本</span><span class="me-value" id="me-app-ver">—</span></div>
+        <div class="me-row" id="autoupd-row"><span class="me-label">WiFi 下自动下载更新</span><span class="me-value on" id="autoupd-val">已开启</span></div>
+        <div class="me-row"><span class="me-label">支持格式</span><span class="me-value">图片 / 视频 / 文字 / 链接 / Office / PDF</span></div>
+      </div>
+      <div class="card card-pad" style="margin-top:14px">
+        <div class="me-row" data-go="install"><span class="me-label">装到手机桌面</span><span class="me-value on" id="me-install">点这里</span></div>
+        <div class="me-row" data-go="remind"><span class="me-label">闹钟</span><span class="me-value" id="me-remind">07:30</span></div>
+        <div class="me-row" id="swipe-row"><span class="me-label">右滑返回上一级</span><span class="me-value on" id="swipe-val">已开启</span></div>
+        <div class="me-row" id="swipe-tabs-row"><span class="me-label">左右滑动切换板块</span><span class="me-value on" id="swipe-tabs-val">已开启</span></div>
+        <div class="me-row" id="clear-row"><span class="me-label">清空本机数据</span><span class="me-value">谨慎</span></div>
+      </div>
+      <div class="hint" style="margin-top:12px">
+        手势说明：在子页面里，从屏幕下方靠左的位置向右滑，返回上一级；在首页/待办/报告/我的之间，任意位置左右滑可切换板块，滑到一半就会看到下一页。电脑上可用 ← → 键切换。
+      </div>
+      <div class="hint" style="margin-top:18px">群文件不会被自动抓取——微信不开放这个接口。你在群里转发文件，或者在「+」里选择文件，才会进来。</div>
+      <div class="hint" style="margin-top:12px">
+        从微信发内容进来的三种办法：<br />
+        ① 复制链接，切回这里，首页顶部会自动冒出「剪贴板里有链接」；<br />
+        ② 安卓：把本页「添加到主屏幕」，之后在别的 App 的分享面板里能直接选「鬼邮局」；<br />
+        ③ iPhone：用「快捷指令」建一个接收网址、打开本页并带上 <b>?u=</b> 的动作，就能出现在微信的分享菜单里。
+      </div>
+    </div>
+  </section>
+
+  <!-- 结果页 -->
+  <section class="screen sub" id="s-item" hidden>
+    <div class="nav"><span class="nav-back" data-back>‹</span><span class="nav-title">分析结果</span></div>
+    <div class="pad" id="item-body"></div>
+  </section>
+
+  <!-- 文件库 -->
+  <section class="screen sub" id="s-library" hidden>
+    <div class="nav"><span class="nav-back" data-back>‹</span><span class="nav-title">全部内容</span></div>
+    <div class="pad">
+      <div class="chips" id="lib-filter">
+        <span class="chip on" data-kind="all">全部</span>
+        <span class="chip" data-kind="file">文件</span>
+        <span class="chip" data-kind="image">图片</span>
+        <span class="chip" data-kind="text">文字</span>
+        <span class="chip" data-kind="video">视频</span>
+        <span class="chip" data-kind="link">链接</span>
+      </div>
+      <div class="card" id="lib-list"></div>
+    </div>
+  </section>
+
+  <!-- 待办时间表 -->
+  <section class="screen" id="s-todos" hidden>
+    <div class="pad">
+      <div class="hero"><div class="brand">待办</div><div class="brand-sub" id="todo-sub">按时间排好，到点提醒你</div></div>
+      <div id="todo-sum"></div>
+      <div class="chips" id="todo-filter">
+        <span class="chip on" data-filter="all">全部</span>
+        <span class="chip" data-filter="open">进行中</span>
+        <span class="chip" data-filter="overdue">已逾期</span>
+        <span class="chip" data-filter="important">只看重要</span>
+        <span class="chip" data-filter="done">已完成</span>
+      </div>
+      <div id="todo-timeline"></div>
+    </div>
+  </section>
+
+  <!-- 闹钟 -->
+  <section class="screen sub" id="s-remind" hidden>
+    <div class="nav"><span class="nav-back" data-back>‹</span><span class="nav-title">闹钟</span></div>
+    <div class="pad">
+      <div class="card card-pad">
+        <div class="me-row" id="rm-perm"><span class="me-label">系统通知</span><span class="me-value" id="rm-perm-val">检查中…</span></div>
+        <div class="me-row"><span class="me-label">重要事项提醒</span><span class="me-value">到期当天 09:30</span></div>
+      </div>
+
+      <div id="alarm-list" class="alarm-list"></div>
+
+      <div id="alarm-form" hidden>
+        <div class="card card-pad">
+          <div class="af-row">
+            <span class="af-lab">时间</span>
+            <input type="time" id="af-time" class="af-input" value="07:30" />
+          </div>
+          <div class="af-row">
+            <span class="af-lab">名称</span>
+            <input type="text" id="af-title" class="af-input" placeholder="看待办" maxlength="12" />
+          </div>
+        </div>
+        <div class="sec-head" style="margin-top:16px"><span class="sec-title">重复</span></div>
+        <div class="chips" id="af-repeat">
+          <span class="chip on" data-days="127">每天</span>
+          <span class="chip" data-days="62">工作日</span>
+          <span class="chip" data-days="0">仅一次</span>
+        </div>
+        <div class="btn btn-primary" id="af-save" style="margin-top:4px">保存闹钟</div>
+        <div class="inst-copy-row" id="af-cancel">取消</div>
+      </div>
+
+      <div class="btn btn-ghost" id="alarm-add">+ 添加闹钟</div>
+
+      <div class="sec-head" style="margin-top:24px"><span class="sec-title">自检</span></div>
+      <div class="card card-pad">
+        <div class="me-row" id="rm-notif"><span class="me-label">通知权限</span><span class="me-value" id="rm-notif-val">检查中…</span></div>
+        <div class="me-row" id="rm-last"><span class="me-label">上次响铃</span><span class="me-value" id="rm-last-val">还没响过</span></div>
+        <div class="me-row" id="rm-battery"><span class="me-label">电池优化</span><span class="me-value on">去设置</span></div>
+      </div>
+      <div class="btn btn-ghost" id="rm-test10" style="margin-top:10px">10 秒后响一次（测试）</div>
+
+      <div class="sec-head" style="margin-top:24px"><span class="sec-title">短信兜底</span></div>
+      <div class="card card-pad">
+        <div class="me-row" id="rm-sms"><span class="me-label">到点发短信</span><span class="me-value" id="rm-sms-val">未开启</span></div>
+        <div class="af-row">
+          <span class="af-lab">手机号</span>
+          <input type="tel" id="rm-sms-num" class="af-input" placeholder="填了才会发" maxlength="15" />
+        </div>
+      </div>
+      <div class="hint" style="margin-top:10px">
+        短信是保险：万一手机把通知拦了，短信还能到。需要授权「发送短信」，运营商会按普通短信收费。只在 APP 版有效。
+      </div>
+
+      <div class="sec-head" style="margin-top:24px"><span class="sec-title">换一种方式</span></div>
+      <div class="card card-pad">
+        <div class="me-row" id="rm-ics"><span class="me-label">写进手机日历</span><span class="me-value on">点这里导出</span></div>
+      </div>
+      <div class="hint" style="margin-top:10px">
+        闹钟装在手机系统里，响不响跟鬼邮局开没开着没关系。安卓上会像系统闹钟一样，在状态栏留一个闹钟图标。
+      </div>
+      <div class="hint" style="margin-top:12px">
+        网页版没有系统闹钟权限，只能用「到点弹通知 + 首页卡片」，而且得开着页面。要真闹钟，用安卓 APP 版。
+      </div>
+    </div>
+  </section>
+
+  <!-- 装到桌面 -->
+  <section class="screen sub" id="s-install" hidden>
+    <div class="nav"><span class="nav-back" data-back>‹</span><span class="nav-title">装到手机</span></div>
+    <div class="pad">
+      <div class="inst-hero">
+        <div class="inst-icon"><i></i></div>
+        <div class="inst-name">鬼邮局</div>
+        <div class="inst-sub" id="inst-sub">装到桌面，就是个 APP</div>
+      </div>
+      <div id="inst-body"></div>
+    </div>
+  </section>
+
+  <!-- 版本更新 -->
+  <section class="screen sub" id="s-update" hidden>
+    <div class="nav"><span class="nav-back" data-back>‹</span><span class="nav-title">版本更新</span></div>
+    <div class="pad">
+      <div class="upd-hero">
+        <div class="upd-icon">↑</div>
+        <div class="upd-name">鬼邮局 <span id="upd-ver">—</span></div>
+        <div class="upd-meta" id="upd-meta">—</div>
+      </div>
+
+      <div class="card card-pad" id="upd-notes-box">
+        <div class="upd-notes-title">这次更新</div>
+        <div class="upd-notes" id="upd-notes"></div>
+      </div>
+
+      <div id="upd-progress" hidden>
+        <div class="bar"><i id="upd-fill"></i></div>
+        <div class="upd-ptext" id="upd-ptext">0%</div>
+      </div>
+
+      <div class="btn btn-primary" id="upd-action">立即更新</div>
+      <div class="inst-copy-row" id="upd-later">稍后再说</div>
+      <div class="hint" id="upd-hint"></div>
+    </div>
+  </section>
+
+  <!-- 报告详情 -->
+  <section class="screen sub" id="s-report" hidden>
+    <div class="nav"><span class="nav-back" data-back>‹</span><span class="nav-title">报告</span></div>
+    <div class="pad" id="report-body"></div>
+  </section>
+
+</div>
+
+<!-- 底部 tab -->
+<nav class="tabbar" id="tabbar">
+  <div class="tab on" data-tab="home"><span>首页</span></div>
+  <div class="tab" data-tab="todos"><span>待办</span></div>
+  <div class="tab" data-tab="reports"><span>报告</span></div>
+  <div class="tab" data-tab="me"><span>我的</span></div>
+</nav>
+
+<!-- 悬浮按钮 -->
+<div class="fab" id="fab">+</div>
+
+<!-- 发布面板 -->
+<div class="mask" id="mask" hidden></div>
+<div class="sheet" id="sheet" hidden>
+  <div class="sheet-bar"></div>
+  <div id="sheet-main">
+    <div class="sheet-title">收到什么？</div>
+    <div class="sheet-item" id="pick-file">
+      <div class="sheet-ic">文</div>
+      <div class="sheet-txt"><div class="sheet-name">文件</div><div class="sheet-desc">Word、Excel、PPT、PDF、文本</div></div>
+    </div>
+    <div class="sheet-item" id="pick-image">
+      <div class="sheet-ic">图</div>
+      <div class="sheet-txt"><div class="sheet-name">图片</div><div class="sheet-desc">报价单、合同照片、截图</div></div>
+    </div>
+    <div class="sheet-item" id="pick-text">
+      <div class="sheet-ic">字</div>
+      <div class="sheet-txt"><div class="sheet-name">一段文字</div><div class="sheet-desc">粘贴聊天记录、通知、条款</div></div>
+    </div>
+    <div class="sheet-item" id="pick-video">
+      <div class="sheet-ic">影</div>
+      <div class="sheet-txt"><div class="sheet-name">视频</div><div class="sheet-desc">会议录像、短视频，抽帧看内容</div></div>
+    </div>
+    <div class="sheet-item" id="pick-link">
+      <div class="sheet-ic">链</div>
+      <div class="sheet-txt"><div class="sheet-name">一个链接</div><div class="sheet-desc">文章、新闻、公告，粘网址就行</div></div>
+    </div>
+    <div class="sheet-item" id="pick-todo">
+      <div class="sheet-ic">办</div>
+      <div class="sheet-txt"><div class="sheet-name">新建待办</div><div class="sheet-desc">手写一条，可设重复和重要</div></div>
+    </div>
+  </div>
+  <div id="sheet-link" hidden>
+    <div class="sheet-title">粘贴链接</div>
+    <textarea class="textarea" id="link-input" rows="2" placeholder="https://..."></textarea>
+    <div class="sheet-paste" id="link-paste">从剪贴板读取</div>
+    <div class="btn btn-primary" id="submit-link" style="margin-top:14px">读取并总结</div>
+    <div class="hint" style="margin-top:10px">只能读公开可访问的网页。需要登录、或者内容全靠脚本加载的页面，可能读不到正文。</div>
+  </div>
+  <div id="sheet-text" hidden>
+    <div class="sheet-title">粘贴内容</div>
+    <textarea class="textarea" id="text-input" placeholder="把要总结的文字粘进来"></textarea>
+    <div class="btn btn-primary" id="submit-text" style="margin-top:14px">开始总结</div>
+  </div>
+  <div id="sheet-todo" hidden>
+    <div class="sheet-title">新建待办</div>
+    <input type="text" class="todo-input" id="todo-title" maxlength="60" placeholder="要做的事，比如「交季度报表」" />
+    <div class="af-row" style="margin-top:12px">
+      <span class="af-lab">截止日</span>
+      <input type="date" id="todo-due" class="af-input" />
+    </div>
+    <div class="af-row">
+      <span class="af-lab">重复</span>
+      <div class="chips" id="todo-repeat" style="margin:0">
+        <span class="chip on" data-repeat="none">不重复</span>
+        <span class="chip" data-repeat="daily">每天</span>
+        <span class="chip" data-repeat="weekly">每周</span>
+        <span class="chip" data-repeat="monthly">每月</span>
+        <span class="chip" data-repeat="workday">工作日</span>
+      </div>
+    </div>
+    <div class="af-row">
+      <span class="af-lab">重要</span>
+      <div class="chips" id="todo-imp" style="margin:0">
+        <span class="chip on" data-imp="0">普通</span>
+        <span class="chip" data-imp="1">重要</span>
+      </div>
+    </div>
+    <div class="btn btn-primary" id="todo-save" style="margin-top:14px">加进时间表</div>
+    <div class="hint" style="margin-top:10px">标成重要以后，到期当天上午 9:30 会弹闹钟提醒你。</div>
+  </div>
+  <div class="sheet-cancel" id="sheet-cancel">取消</div>
+</div>
+
+<!-- 加载遮罩 -->
+<div class="loading" id="loading" hidden>
+  <div class="loading-card">
+    <div class="spinner"></div>
+    <div class="loading-text" id="loading-text">处理中…</div>
+  </div>
+</div>
+
+<input type="file" id="file-input" accept=".docx,.xlsx,.pptx,.pdf,.txt,.md,.csv" hidden />
+<input type="file" id="image-input" accept="image/*" hidden />
+<input type="file" id="video-input" accept="video/*" hidden />
+
+<div class="toast" id="toast" hidden></div>
+
+<!-- 长按多选时的批量操作条 -->
+<div class="selbar" id="selbar" hidden>
+  <span class="sel-count" id="sel-count">已选 0 项</span>
+  <span class="sel-cancel" data-act="sel-cancel">取消</span>
+  <div class="sel-acts">
+    <span class="sel-act" data-act="sel-done">完成</span>
+    <span class="sel-act" data-act="sel-star">标重要</span>
+    <span class="sel-act danger" data-act="sel-del">删除</span>
+  </div>
+</div>
+
+<script src="assets/jszip.min.js"></script>
+<script src="assets/sdk.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>

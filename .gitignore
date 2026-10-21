@@ -1,0 +1,24 @@
+# 系统文件
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 日志与临时文件
+*.log
+*.tmp
+.workbuddy-note.txt
+
+# 依赖与构建产物
+node_modules/
+dist/
+build/
+
+# 本地环境与密钥（本项目虽无密钥，也一并挡住）
+.env
+.env.*
+*.pem
+*.keystore
+
+# 编辑器
+.vscode/
+.idea/

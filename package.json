@@ -1,0 +1,10 @@
+{
+  "name": "guiji-web",
+  "version": "1.6.0",
+  "private": true,
+  "description": "鬼邮局：AI 读文件 / 图片 / 视频 / 链接 / PDF，待办时间表和闹钟",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  }
+}
